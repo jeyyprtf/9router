@@ -36,7 +36,37 @@ export const UPDATER_CONFIG = {
 export const THEME_CONFIG = {
   storageKey: "theme",
   defaultTheme: "system", // "light" | "dark" | "system"
+  appearanceStorageKey: "appearance",
+  defaultAppearance: "default", // "default" | "liquid" | "atelier" | "forge"
 };
+
+// Visual appearance presets (independent of light/dark)
+export const APPEARANCE_PRESETS = [
+  {
+    id: "default",
+    label: "Default",
+    description: "Original 9Router look — warm coral, soft surfaces",
+    icon: "palette",
+  },
+  {
+    id: "liquid",
+    label: "Liquid Glass",
+    description: "macOS-style liquid refraction, specular edges, deep frost",
+    icon: "water_drop",
+  },
+  {
+    id: "atelier",
+    label: "Atelier",
+    description: "Minimal paper studio — quiet, refined, airy",
+    icon: "brush",
+  },
+  {
+    id: "forge",
+    label: "Forge",
+    description: "Bold editorial contrast — sharp, dense, punchy",
+    icon: "bolt",
+  },
+];
 
 // Subscription
 export const SUBSCRIPTION_CONFIG = {
