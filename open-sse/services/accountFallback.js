@@ -1,4 +1,7 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS } from "../config/errorConfig.js";
+import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS, normalizeErrorText, isQuotaExhaustedText } from "../config/errorConfig.js";
+
+// Re-exported: callers already import these from here.
+export { normalizeErrorText, isQuotaExhaustedText };
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)
@@ -13,21 +16,41 @@ export function getQuotaCooldown(backoffLevel = 0) {
 }
 
 /**
+ * Detect hard quota / free-usage exhaustion (e.g. Grok free-usage-exhausted).
+ * Soft 429 rate limits should NOT match this — only long-window quota depletion.
+ * @param {number|null|undefined} status
+ * @param {unknown} errorText
+ * @returns {boolean}
+ */
+export function isQuotaExhaustedError(status, errorText) {
+  if (isQuotaExhaustedText(errorText)) return true;
+  // Provider wording we don't have a marker for yet, but the status + shape is unambiguous
+  const lowerError = normalizeErrorText(errorText);
+  return status === 429 && lowerError.includes("subscription:") && lowerError.includes("exhausted");
+}
+
+/**
  * Check if error should trigger account fallback (switch to next account)
  * Config-driven: matches ERROR_RULES top-to-bottom (text rules first, then status)
  * @param {number} status - HTTP status code
  * @param {string} errorText - Error message text
  * @param {number} backoffLevel - Current backoff level for exponential backoff
- * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number }}
+ * @returns {{ shouldFallback: boolean, cooldownMs: number, newBackoffLevel?: number, disableConnection?: boolean }}
  */
 export function checkFallbackError(status, errorText, backoffLevel = 0) {
-  const lowerError = errorText
-    ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
-    : "";
+  const lowerError = normalizeErrorText(errorText);
 
   for (const rule of ERROR_RULES) {
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {
+      if (rule.disableConnection) {
+        return {
+          shouldFallback: true,
+          cooldownMs: rule.cooldownMs ?? TRANSIENT_COOLDOWN_MS,
+          disableConnection: true,
+          newBackoffLevel: 0,
+        };
+      }
       if (rule.backoff) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
@@ -37,12 +60,30 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
 
     // Status-based rule: match HTTP status code
     if (rule.status && rule.status === status) {
+      if (rule.disableConnection) {
+        return {
+          shouldFallback: true,
+          cooldownMs: rule.cooldownMs ?? TRANSIENT_COOLDOWN_MS,
+          disableConnection: true,
+          newBackoffLevel: 0,
+        };
+      }
       if (rule.backoff) {
         const newLevel = Math.min(backoffLevel + 1, BACKOFF_CONFIG.maxLevel);
         return { shouldFallback: true, cooldownMs: getQuotaCooldown(newLevel), newBackoffLevel: newLevel };
       }
       return { shouldFallback: true, cooldownMs: rule.cooldownMs };
     }
+  }
+
+  // Safety net for quota markers not listed as individual rules
+  if (isQuotaExhaustedError(status, errorText)) {
+    return {
+      shouldFallback: true,
+      cooldownMs: TRANSIENT_COOLDOWN_MS,
+      disableConnection: true,
+      newBackoffLevel: 0,
+    };
   }
 
   // Default: transient cooldown for any unmatched error
