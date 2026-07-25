@@ -1,6 +1,6 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
+import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil, isQuotaExhaustedError } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache } from "./antigravityQuota.js";
@@ -228,13 +228,15 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
 
 /**
  * Mark account+model as unavailable — locks modelLock_${model} in DB.
- * All errors (429, 401, 5xx, etc.) lock per model, not per account.
+ * Soft errors (short 429, 401, 5xx) lock per model.
+ * Hard quota exhaustion (e.g. Grok free-usage-exhausted) also sets isActive=false
+ * so the connection stays stored but is never selected until re-enabled.
  * @param {string} connectionId
  * @param {number} status - HTTP status code from upstream
  * @param {string} errorText
  * @param {string|null} provider
  * @param {string|null} model - The specific model that triggered the error
- * @returns {{ shouldFallback: boolean, cooldownMs: number }}
+ * @returns {{ shouldFallback: boolean, cooldownMs: number, disabled?: boolean }}
  */
 export async function markAccountUnavailable(connectionId, status, errorText, provider = null, model = null, resetsAtMs = null) {
   if (!connectionId || connectionId === "noauth") return { shouldFallback: false, cooldownMs: 0 };
@@ -246,11 +248,12 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
 
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
-  let shouldFallback, cooldownMs, newBackoffLevel;
+  let shouldFallback, cooldownMs, newBackoffLevel, disableConnection;
   if (githubResetAtMs) {
     shouldFallback = true;
     cooldownMs = githubResetAtMs - Date.now();
     newBackoffLevel = 0;
+    disableConnection = isQuotaExhaustedError(status, errorText);
   } else if (resetsAtMs && resetsAtMs > Date.now()) {
     shouldFallback = true;
     // Antigravity quota API provides exact per-model resetAt. Do not truncate it.
@@ -258,32 +261,69 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
       ? resetsAtMs - Date.now()
       : Math.min(resetsAtMs - Date.now(), MAX_RATE_LIMIT_COOLDOWN_MS);
     newBackoffLevel = 0;
+    // Still hard-disable when body clearly says free/usage exhausted
+    disableConnection = isQuotaExhaustedError(status, errorText);
   } else {
-    ({ shouldFallback, cooldownMs, newBackoffLevel } = checkFallbackError(status, errorText, backoffLevel));
+    ({ shouldFallback, cooldownMs, newBackoffLevel, disableConnection } = checkFallbackError(status, errorText, backoffLevel));
   }
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
-  const reason = typeof errorText === "string" ? errorText.slice(0, 100) : "Provider error";
+  // Prefer full marker match; fall back to rule flag.
+  const hardQuota = disableConnection === true || isQuotaExhaustedError(status, errorText);
+  const reason = typeof errorText === "string" ? errorText.slice(0, 300) : "Provider error";
   const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
+  const nowIso = new Date().toISOString();
 
-  await updateProviderConnection(connectionId, {
+  // User control: global setting + per-provider override (like round-robin)
+  let autoDisableEnabled = true;
+  try {
+    const settings = await getSettings();
+    autoDisableEnabled = settings.autoDisableOnQuotaExhausted !== false;
+    if (provider) {
+      const providerId = resolveProviderId(provider);
+      const override = (settings.providerStrategies || {})[providerId] || {};
+      if (override.autoDisableOnQuotaExhausted === false) autoDisableEnabled = false;
+      else if (override.autoDisableOnQuotaExhausted === true) autoDisableEnabled = true;
+    }
+  } catch {
+    autoDisableEnabled = true;
+  }
+
+  const shouldAutoDisable = hardQuota && autoDisableEnabled;
+
+  const update = {
     ...lockUpdate,
     testStatus: "unavailable",
     lastError: reason,
     errorCode: status,
-    lastErrorAt: new Date().toISOString(),
-    backoffLevel: newBackoffLevel ?? backoffLevel
-  });
+    lastErrorAt: nowIso,
+    backoffLevel: newBackoffLevel ?? backoffLevel,
+  };
+
+  if (shouldAutoDisable) {
+    update.isActive = false;
+    update.autoDisabled = true;
+    update.disabledReason = "quota_exhausted";
+    update.disabledAt = nowIso;
+  }
+
+  await updateProviderConnection(connectionId, update);
 
   const lockKey = Object.keys(lockUpdate)[0];
   const connName = conn?.displayName || conn?.name || conn?.email || connectionId.slice(0, 8);
-  log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
-
-  if (provider && status && reason) {
-    console.error(`❌ ${provider} [${status}]: ${reason}`);
+  if (shouldAutoDisable) {
+    log.warn("AUTH", `${connName} AUTO-DISABLED (quota exhausted) [${status}] — kept as connection, isActive=false`);
+  } else if (hardQuota && !autoDisableEnabled) {
+    log.warn("AUTH", `${connName} quota exhausted but auto-disable OFF — model lock only [${status}]`);
+  } else {
+    log.warn("AUTH", `${connName} locked ${lockKey} for ${Math.round(cooldownMs / 1000)}s [${status}]`);
   }
 
-  return { shouldFallback: true, cooldownMs };
+  if (provider && status && reason) {
+    console.error(`❌ ${provider} [${status}]${shouldAutoDisable ? " AUTO-DISABLED" : ""}: ${reason}`);
+  }
+
+  return { shouldFallback: true, cooldownMs, disabled: shouldAutoDisable };
 }
 
 /**
