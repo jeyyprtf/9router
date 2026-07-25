@@ -6,7 +6,7 @@ import Modal, { ConfirmModal } from "@/shared/components/Modal";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
 import { useTheme } from "@/shared/hooks/useTheme";
 import { cn } from "@/shared/utils/cn";
-import { APP_CONFIG } from "@/shared/constants/config";
+import { APP_CONFIG, APPEARANCE_PRESETS } from "@/shared/constants/config";
 import { LOCALE_COOKIE, normalizeLocale } from "@/i18n/config";
 import { LOCALE_FLAGS } from "@/shared/constants/locales";
 
@@ -20,7 +20,7 @@ function getLocaleFromCookie() {
 }
 
 export default function ProfilePage() {
-  const { theme, setTheme, isDark } = useTheme();
+  const { theme, setTheme, isDark, appearance, setAppearance } = useTheme();
   const [locale, setLocale] = useState(() => getLocaleFromCookie());
   const [langOpen, setLangOpen] = useState(false);
   const [shutdownOpen, setShutdownOpen] = useState(false);
@@ -793,6 +793,59 @@ export default function ProfilePage() {
               ))}
             </div>
           </div>
+
+          {/* Appearance presets */}
+          <div className="pt-4 border-t border-border mb-4">
+            <div className="mb-3">
+              <p className="font-medium text-sm sm:text-base">Appearance</p>
+              <p className="text-xs sm:text-sm text-text-muted">
+                Visual style preset — independent of light/dark
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {APPEARANCE_PRESETS.map((preset) => {
+                const active = appearance === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setAppearance(preset.id)}
+                    className={cn(
+                      "flex items-start gap-3 p-3 text-left rounded-[var(--radius-brand)] border transition-all",
+                      active
+                        ? "border-primary bg-primary/5 shadow-[var(--shadow-warm)]"
+                        : "border-border bg-bg hover:border-primary/40 hover:bg-surface-2/40"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "material-symbols-outlined text-[22px] mt-0.5 shrink-0",
+                        active ? "text-primary" : "text-text-muted"
+                      )}
+                    >
+                      {preset.icon}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium text-sm text-text-main">
+                          {preset.label}
+                        </span>
+                        {active && (
+                          <span className="text-[10px] uppercase tracking-wide font-semibold text-primary">
+                            active
+                          </span>
+                        )}
+                      </span>
+                      <span className="block text-xs text-text-muted mt-0.5 leading-snug">
+                        {preset.description}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="flex flex-col gap-3 pt-4 border-t border-border">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
               <div>

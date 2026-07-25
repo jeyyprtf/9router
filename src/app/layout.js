@@ -34,7 +34,7 @@ export default function RootLayout({ children }) {
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `var d=document,r=d.documentElement,f=function(){r.classList.add('fonts-loaded')};if(d.fonts&&d.fonts.load){d.fonts.load('24px "Material Symbols Outlined"').then(f).catch(f);setTimeout(f,3000)}else{f()}`,
+            __html: `(function(){try{var r=document.documentElement;var s=localStorage.getItem('theme');if(s){var p=JSON.parse(s);var st=p&&p.state?p.state:p;var t=st&&st.theme;var a=st&&st.appearance;var dark=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);if(dark)r.classList.add('dark');if(a&&a!=='default')r.setAttribute('data-appearance',a)}}catch(e){}var d=document,rr=d.documentElement,f=function(){rr.classList.add('fonts-loaded')};if(d.fonts&&d.fonts.load){d.fonts.load('24px "Material Symbols Outlined"').then(f).catch(f);setTimeout(f,3000)}else{f()}})()`,
           }}
         />
       </head>
