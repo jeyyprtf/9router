@@ -1,5 +1,6 @@
 "use client";
 
+import { isQuotaExhaustedText } from "open-sse/config/errorConfig.js";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -34,6 +35,20 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isQuotaExhaustedConn(c) {
+  return isQuotaExhaustedText(c?.lastError);
+}
+
+/**
+ * When Auto-disable feature is ON: any still-active connection with hard-quota lastError
+ * must be flipped off (DB + UI). No exception for previous manual re-enable —
+ * feature ON means literally keep exhausted accounts disabled.
+ */
+function shouldForceAutoDisable(c) {
+  if (!c || c.isActive === false) return false;
+  return isQuotaExhaustedConn(c);
+}
+
 export default function ProviderDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -63,6 +78,8 @@ export default function ProviderDetailPage() {
   const [bulkProxyPoolId, setBulkProxyPoolId] = useState("__none__");
   const [bulkUpdatingProxy, setBulkUpdatingProxy] = useState(false);
   const [providerStrategy, setProviderStrategy] = useState(null);
+  // null = inherit global default (ON); true/false = explicit per-provider override
+  const [autoDisableQuota, setAutoDisableQuota] = useState(true);
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
@@ -301,17 +318,58 @@ export default function ProviderDetailPage() {
       const nodesData = await nodesRes.json();
       const proxyPoolsData = await proxyPoolsRes.json();
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+      // Load per-provider strategy override
+      const override = (settingsData.providerStrategies || {})[providerId] || {};
+      setProviderStrategy(override.fallbackStrategy || null);
+      setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
+      // Auto-disable on hard quota: per-provider override, else global default (true)
+      let autoDisableOn = settingsData.autoDisableOnQuotaExhausted !== false;
+      if (override.autoDisableOnQuotaExhausted === false) autoDisableOn = false;
+      else if (override.autoDisableOnQuotaExhausted === true) autoDisableOn = true;
+      setAutoDisableQuota(autoDisableOn);
+
       if (connectionsRes.ok) {
-        const filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
+        let filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
+        // Keep UI toggle in sync with Auto-disable: force-disable still-active exhausted accounts
+        if (autoDisableOn) {
+          const targets = filtered.filter(shouldForceAutoDisable);
+          if (targets.length > 0) {
+            const nowIso = new Date().toISOString();
+            await Promise.all(
+              targets.map((c) =>
+                fetch(`/api/providers/${c.id}`, {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    isActive: false,
+                    autoDisabled: true,
+                    disabledReason: "quota_exhausted",
+                    disabledAt: nowIso,
+                    testStatus: "unavailable",
+                  }),
+                }),
+              ),
+            );
+            const disabledIds = new Set(targets.map((c) => c.id));
+            filtered = filtered.map((c) =>
+              disabledIds.has(c.id)
+                ? {
+                    ...c,
+                    isActive: false,
+                    autoDisabled: true,
+                    disabledReason: "quota_exhausted",
+                    disabledAt: nowIso,
+                    testStatus: "unavailable",
+                  }
+                : c,
+            );
+          }
+        }
         setConnections(filtered);
       }
       if (proxyPoolsRes.ok) {
         setProxyPools(proxyPoolsData.proxyPools || []);
       }
-      // Load per-provider strategy override
-      const override = (settingsData.providerStrategies || {})[providerId] || {};
-      setProviderStrategy(override.fallbackStrategy || null);
-      setProviderStickyLimit(override.stickyRoundRobinLimit != null ? String(override.stickyRoundRobinLimit) : "1");
       // Load per-provider thinking config
       const thinkingCfg = (settingsData.providerThinking || {})[providerId] || {};
       setThinkingMode(thinkingCfg.mode || "auto");
@@ -361,25 +419,35 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const saveProviderStrategy = async (strategy, stickyLimit) => {
+  const saveProviderStrategy = async ({ strategy, stickyLimit, autoDisable } = {}) => {
     try {
       const settingsRes = await fetch("/api/settings", { cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
       const current = settingsData.providerStrategies || {};
+      const existing = { ...(current[providerId] || {}) };
 
-      // Build override: null strategy means remove override, use global
-      const override = {};
-      if (strategy) override.fallbackStrategy = strategy;
-      if (strategy === "round-robin" && stickyLimit !== "") {
-        override.stickyRoundRobinLimit = Number(stickyLimit) || 3;
+      // Merge — preserve unrelated keys (auto-disable vs round-robin)
+      const nextStrategy = strategy !== undefined ? strategy : (existing.fallbackStrategy || null);
+      const nextSticky = stickyLimit !== undefined ? stickyLimit : existing.stickyRoundRobinLimit;
+      const nextAuto =
+        autoDisable !== undefined ? autoDisable : existing.autoDisableOnQuotaExhausted;
+
+      if (nextStrategy) existing.fallbackStrategy = nextStrategy;
+      else delete existing.fallbackStrategy;
+
+      if (nextStrategy === "round-robin" && nextSticky !== "" && nextSticky != null) {
+        existing.stickyRoundRobinLimit = Number(nextSticky) || 3;
+      } else if (nextStrategy !== "round-robin") {
+        delete existing.stickyRoundRobinLimit;
+      }
+
+      if (nextAuto === true || nextAuto === false) {
+        existing.autoDisableOnQuotaExhausted = nextAuto;
       }
 
       const updated = { ...current };
-      if (Object.keys(override).length === 0) {
-        delete updated[providerId];
-      } else {
-        updated[providerId] = override;
-      }
+      if (Object.keys(existing).length === 0) delete updated[providerId];
+      else updated[providerId] = existing;
 
       await fetch("/api/settings", {
         method: "PATCH",
@@ -396,12 +464,34 @@ export default function ProviderDetailPage() {
     const sticky = enabled ? (providerStickyLimit || "1") : providerStickyLimit;
     if (enabled && !providerStickyLimit) setProviderStickyLimit("1");
     setProviderStrategy(strategy);
-    saveProviderStrategy(strategy, sticky);
+    saveProviderStrategy({ strategy, stickyLimit: sticky });
   };
 
   const handleStickyLimitChange = (value) => {
     setProviderStickyLimit(value);
-    saveProviderStrategy("round-robin", value);
+    saveProviderStrategy({ strategy: "round-robin", stickyLimit: value });
+  };
+
+  const handleAutoDisableToggle = async (enabled) => {
+    setAutoDisableQuota(enabled);
+    await saveProviderStrategy({ autoDisable: enabled });
+    // Turning ON: re-fetch then force-disable every exhausted account (stale React state safe)
+    if (enabled) {
+      try {
+        const res = await fetch("/api/providers", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          const list = (data.connections || []).filter((c) => c.provider === providerId);
+          const next = await syncDisableQuotaExhausted(list);
+          setConnections(next);
+          return;
+        }
+      } catch (e) {
+        console.log("Error syncing auto-disable:", e);
+      }
+      const next = await syncDisableQuotaExhausted(connections);
+      setConnections(next);
+    }
   };
 
   const saveThinkingConfig = async (mode) => {
@@ -801,18 +891,87 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const handleUpdateConnectionStatus = async (id, isActive) => {
+  const handleUpdateConnectionStatus = async (id, isActive, extra = {}) => {
     try {
+      const body = { isActive, ...extra };
+      // Manual enable: clear auto-disable markers. Note: if Auto-disable feature is still ON
+      // and lastError still looks quota-exhausted, next page load / toggle-ON will force-disable again.
+      if (isActive === true && body.autoDisabled === undefined) {
+        body.autoDisabled = false;
+        body.disabledReason = null;
+        body.disabledAt = null;
+      }
       const res = await fetch(`/api/providers/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
-        setConnections(prev => prev.map(c => c.id === id ? { ...c, isActive } : c));
+        const data = await res.json().catch(() => null);
+        const updated = data?.connection;
+        setConnections((prev) =>
+          prev.map((c) => {
+            if (c.id !== id) return c;
+            if (updated) return { ...c, ...updated, isActive: updated.isActive ?? isActive };
+            return {
+              ...c,
+              isActive,
+              ...(isActive
+                ? { autoDisabled: false, disabledReason: null, disabledAt: null }
+                : extra),
+            };
+          }),
+        );
+        return true;
       }
     } catch (error) {
       console.log("Error updating connection status:", error);
+    }
+    return false;
+  };
+
+  // When Auto-disable is ON: sync exhausted accounts → isActive=false in DB + UI
+  const syncDisableQuotaExhausted = async (list) => {
+    const targets = (list || []).filter(shouldForceAutoDisable);
+    if (targets.length === 0) return list || [];
+    const nowIso = new Date().toISOString();
+    const disabledIds = new Set();
+    await Promise.all(
+      targets.map(async (c) => {
+        const ok = await handleUpdateConnectionStatus(c.id, false, {
+          autoDisabled: true,
+          disabledReason: "quota_exhausted",
+          disabledAt: nowIso,
+          testStatus: "unavailable",
+        });
+        if (ok) disabledIds.add(c.id);
+      }),
+    );
+    return (list || []).map((c) =>
+      disabledIds.has(c.id)
+        ? {
+            ...c,
+            isActive: false,
+            autoDisabled: true,
+            disabledReason: "quota_exhausted",
+            disabledAt: nowIso,
+            testStatus: "unavailable",
+          }
+        : c,
+    );
+  };
+
+  const isQuotaAutoDisabledConn = (c) => {
+    if (c?.isActive !== false) return false;
+    if (c.autoDisabled === true || c.disabledReason === "quota_exhausted") return true;
+    return isQuotaExhaustedConn(c);
+  };
+
+  const handleEnableAutoDisabled = async () => {
+    const targets = connections.filter(isQuotaAutoDisabledConn);
+    if (targets.length === 0) return;
+    for (const c of targets) {
+      await handleUpdateConnectionStatus(c.id, true);
     }
   };
 
@@ -1421,7 +1580,14 @@ export default function ProviderDetailPage() {
       ) : (
         <Card>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg font-semibold">Connections</h2>
+            <div>
+              <h2 className="text-lg font-semibold">Connections</h2>
+              {autoDisableQuota && (
+                <p className="mt-1 text-xs text-text-muted">
+                  Auto-disable ON: hard quota / free-usage 429 skips the account (kept in list) until you re-enable it.
+                </p>
+              )}
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
               {connections.length > 0 && proxyPools.length > 0 && (
                 <Button
@@ -1435,6 +1601,17 @@ export default function ProviderDetailPage() {
               )}
               {connections.length > 0 && (
                 <>
+                  {connections.some(isQuotaAutoDisabledConn) && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon="play_arrow"
+                      onClick={handleEnableAutoDisabled}
+                      title="Re-enable connections that were auto-disabled after quota exhaustion"
+                    >
+                      Enable auto-disabled ({connections.filter(isQuotaAutoDisabledConn).length})
+                    </Button>
+                  )}
                   {selectedConnectionIds.length > 0 && (
                     <Button
                       size="sm"
@@ -1467,6 +1644,14 @@ export default function ProviderDetailPage() {
                   )}
                 </>
               )}
+              {/* Auto-disable on hard quota (user control, like Round Robin) */}
+              <div className="flex flex-wrap items-center gap-2" title="When ON, free-usage / hard quota 429 sets the connection inactive (still listed). When OFF, only temporary model lock + fallback.">
+                <span className="text-xs text-text-muted font-medium">Auto-disable</span>
+                <Toggle
+                  checked={autoDisableQuota}
+                  onChange={handleAutoDisableToggle}
+                />
+              </div>
               {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-text-muted font-medium">Round Robin</span>
