@@ -11,10 +11,17 @@ const knownFails = new Set(
 const resultsPath = process.argv[2];
 if (!resultsPath) { console.error("Missing results.json path"); process.exit(2); }
 
+// Baseline keys are repo-relative ("tests/unit/x.test.js"). Absolute paths differ
+// per checkout, so anchor on the last "tests/" segment instead of a hardcoded root.
+const toKey = (absPath) => {
+  const i = absPath.lastIndexOf("/tests/");
+  return i === -1 ? absPath : absPath.slice(i + 1);
+};
+
 const r = JSON.parse(readFileSync(resultsPath, "utf8"));
 const nowFails = r.testResults.flatMap(f =>
   f.assertionResults.filter(a => a.status === "failed")
-    .map(a => f.name.split("/app/")[1] + " :: " + a.fullName)
+    .map(a => toKey(f.name) + " :: " + a.fullName)
 );
 
 // Regression = fail bây giờ NHƯNG không có trong baseline known-fails

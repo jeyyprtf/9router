@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { buildClearModelLocksUpdate } from "open-sse/services/accountFallback.js";
+import { isQuotaExhaustedText } from "open-sse/config/errorConfig.js";
 import {
   getProviderConnectionById,
   getProxyPoolById,
@@ -98,6 +100,9 @@ export async function PUT(request, { params }) {
       testStatus,
       lastError,
       lastErrorAt,
+      autoDisabled,
+      disabledReason,
+      disabledAt,
       providerSpecificData
     } = body;
 
@@ -121,7 +126,41 @@ export async function PUT(request, { params }) {
     if (priority !== undefined) updateData.priority = priority;
     if (globalPriority !== undefined) updateData.globalPriority = globalPriority;
     if (defaultModel !== undefined) updateData.defaultModel = defaultModel;
-    if (isActive !== undefined) updateData.isActive = isActive;
+    if (isActive !== undefined) {
+      updateData.isActive = isActive;
+      // Manual re-enable clears auto-disable markers from quota exhaustion.
+      // lastError must be cleared too: the UI force-sync re-disables any active
+      // connection whose lastError still matches a quota marker, so leaving it
+      // would undo this enable on the next page load. If the account is really
+      // still exhausted, the next upstream 429 re-disables it.
+      if (isActive === true) {
+        updateData.autoDisabled = false;
+        updateData.disabledReason = null;
+        updateData.disabledAt = null;
+        const wasQuotaDisabled =
+          existing.autoDisabled === true ||
+          existing.disabledReason === "quota_exhausted" ||
+          isQuotaExhaustedText(existing.lastError);
+        if (wasQuotaDisabled) {
+          if (lastError === undefined) updateData.lastError = null;
+          updateData.errorCode = null;
+          updateData.backoffLevel = 0;
+          // Drop the cooldown set alongside the auto-disable, so Enable is usable now
+          Object.assign(updateData, buildClearModelLocksUpdate(existing));
+        }
+      }
+    }
+    if (autoDisabled !== undefined) updateData.autoDisabled = autoDisabled;
+    if (disabledReason !== undefined) updateData.disabledReason = disabledReason;
+    if (disabledAt !== undefined) updateData.disabledAt = disabledAt;
+    // Explicit auto-disable payload (sync from UI when Auto-disable toggle is ON)
+    if (isActive === false && autoDisabled === true) {
+      updateData.isActive = false;
+      updateData.autoDisabled = true;
+      updateData.disabledReason = disabledReason || "quota_exhausted";
+      updateData.disabledAt = disabledAt || new Date().toISOString();
+      if (testStatus === undefined) updateData.testStatus = "unavailable";
+    }
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
     if (testStatus !== undefined) updateData.testStatus = testStatus;
     if (lastError !== undefined) updateData.lastError = lastError;

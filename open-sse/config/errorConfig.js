@@ -56,11 +56,65 @@ const COOLDOWN = {
  *   - cooldownMs: fixed cooldown duration
  *   - backoff: true = use exponential backoff (rate limit)
  */
+/**
+ * Hard quota / free-usage exhaustion markers.
+ * These should disable the connection (isActive=false), not only short cooldown.
+ * Matched case-insensitively against error body/message.
+ *
+ * SINGLE SOURCE OF TRUTH. The routing engine, the providers API and the dashboard
+ * all classify "quota exhausted" through isQuotaExhaustedText() below. Do not
+ * re-inline this list or a regex copy of it anywhere — a client-side definition
+ * that drifts from this one makes the UI disable accounts the API just enabled.
+ */
+export const QUOTA_EXHAUSTED_MARKERS = [
+  "free-usage-exhausted",
+  "usage-exhausted",
+  "quota exhausted",
+  "quota_exhausted",
+  "insufficient_quota",
+  "included free usage",
+  "usage resets over a rolling",
+];
+
+/**
+ * Normalize an error payload (string, object, or nullish) to a lowercase string.
+ * @param {unknown} errorText
+ * @returns {string}
+ */
+export function normalizeErrorText(errorText) {
+  if (!errorText) return "";
+  if (typeof errorText === "string") return errorText.toLowerCase();
+  try {
+    return JSON.stringify(errorText).toLowerCase();
+  } catch {
+    return String(errorText).toLowerCase();
+  }
+}
+
+/**
+ * True when the error body indicates hard quota / free-usage exhaustion.
+ * Soft 429 rate limits must NOT match — they only get a short cooldown.
+ * @param {unknown} errorText
+ * @returns {boolean}
+ */
+export function isQuotaExhaustedText(errorText) {
+  const lower = normalizeErrorText(errorText);
+  if (!lower) return false;
+  return QUOTA_EXHAUSTED_MARKERS.some((m) => lower.includes(m));
+}
+
 export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
   { text: "request not allowed",      cooldownMs: COOLDOWN.short },
   { text: "improperly formed request", cooldownMs: COOLDOWN.long },
+  // Hard quota before generic rate-limit backoff. Derived from the marker list so
+  // the rules and isQuotaExhaustedText() can never disagree.
+  ...QUOTA_EXHAUSTED_MARKERS.map((text) => ({
+    text,
+    disableConnection: true,
+    cooldownMs: COOLDOWN.long,
+  })),
   { text: "rate limit",               backoff: true },
   { text: "too many requests",        backoff: true },
   { text: "quota exceeded",           backoff: true },
