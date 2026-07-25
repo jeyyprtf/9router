@@ -12,6 +12,9 @@ const DEFAULT_SETTINGS = {
   tailscaleEnabled: false,
   tailscaleUrl: "",
   stickyRoundRobinLimit: 3,
+  // When true, hard quota / free-usage 429 sets connection isActive=false (kept in list).
+  // Per-provider override: providerStrategies[providerId].autoDisableOnQuotaExhausted
+  autoDisableOnQuotaExhausted: true,
   providerStrategies: {},
   quotaVisibility: {},
   comboStrategy: "fallback",
