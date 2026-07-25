@@ -1,5 +1,6 @@
 "use client";
 
+import { isQuotaExhaustedText } from "open-sse/config/errorConfig.js";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
 import PropTypes from "prop-types";
@@ -86,6 +87,8 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   }, [showProxyDropdown]);
 
   const effectiveStatus = connection.testStatus === "unavailable" && !isCooldown ? "active" : connection.testStatus;
+  const lastErrorText = connection.lastError || "";
+  const isAutoDisabled = connection.isActive === false && (connection.autoDisabled === true || connection.disabledReason === "quota_exhausted" || isQuotaExhaustedText(lastErrorText));
 
   const getStatusVariant = () => getConnectionStatusVariant(connection.isActive, effectiveStatus);
 
@@ -115,12 +118,19 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
           <p className="text-sm font-medium truncate">{displayName}</p>
           <div className="flex flex-wrap items-center gap-2 mt-1">
             <Badge variant={getStatusVariant()} size="sm" dot>
-              {connection.isActive === false ? "disabled" : (effectiveStatus || "Unknown")}
+              {connection.isActive === false
+                ? (isAutoDisabled ? "auto-disabled" : "disabled")
+                : (effectiveStatus || "Unknown")}
             </Badge>
+            {isAutoDisabled && (
+              <Badge variant="error" size="sm" title={lastErrorText || connection.disabledReason || "quota exhausted"}>
+                quota exhausted
+              </Badge>
+            )}
             {hasAnyProxy && <Badge variant={proxyBadgeVariant} size="sm">Proxy</Badge>}
             {isCooldown && connection.isActive !== false && <CooldownTimer until={modelLockUntil} />}
-            {connection.lastError && connection.isActive !== false && (
-              <span className="text-xs text-red-500 truncate max-w-[300px]" title={connection.lastError}>{connection.lastError}</span>
+            {lastErrorText && (
+              <span className="text-xs text-red-500 truncate max-w-[300px]" title={lastErrorText}>{lastErrorText}</span>
             )}
             <span className="text-xs text-text-muted">#{connection.priority}</span>
           </div>
