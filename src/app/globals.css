@@ -528,6 +528,299 @@ button:disabled,
   background: var(--color-bg-alt);
 }
 
+/* ============================================================
+   Appearance presets — data-appearance on <html>
+   Orthogonal to light/dark. "default" = no attribute.
+   ============================================================ */
+
+/* --- Liquid Glass (macOS liquid, not flat glassmorphism) --- */
+[data-appearance="liquid"] {
+  --color-bg: #eef1f6;
+  --color-bg-alt: #e4e9f0;
+  --color-surface: rgba(255, 255, 255, 0.52);
+  --color-surface-2: rgba(255, 255, 255, 0.38);
+  --color-surface-3: rgba(255, 255, 255, 0.28);
+  --color-sidebar: rgba(246, 248, 252, 0.55);
+  --color-border: rgba(255, 255, 255, 0.55);
+  --color-border-subtle: rgba(120, 140, 170, 0.14);
+  --color-text: #1a1d24;
+  --color-text-main: #1a1d24;
+  --color-text-muted: #5c6575;
+  --color-text-subtle: #8a93a3;
+  --radius-brand: 14px;
+  --radius-brand-lg: 20px;
+  --shadow-soft:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.75),
+    inset 0 -0.5px 0 0 rgba(40, 60, 90, 0.06),
+    0 1px 2px rgba(30, 45, 70, 0.04),
+    0 8px 28px -10px rgba(30, 50, 90, 0.14);
+  --shadow-elev:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 0 rgba(40, 60, 90, 0.05),
+    0 2px 4px rgba(30, 45, 70, 0.04),
+    0 18px 48px -12px rgba(25, 40, 75, 0.22);
+  --shadow-warm:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.7),
+    0 4px 20px -4px rgba(229, 106, 74, 0.28);
+  --shadow-focus: 0 0 0 3px rgba(229, 106, 74, 0.22);
+}
+
+[data-appearance="liquid"].dark {
+  --color-bg: #0c0e12;
+  --color-bg-alt: #12151c;
+  --color-surface: rgba(28, 32, 42, 0.55);
+  --color-surface-2: rgba(38, 44, 58, 0.45);
+  --color-surface-3: rgba(50, 58, 74, 0.4);
+  --color-sidebar: rgba(16, 18, 26, 0.6);
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-text: #f0f2f6;
+  --color-text-main: #f0f2f6;
+  --color-text-muted: #9aa3b5;
+  --color-text-subtle: #6b7385;
+  --shadow-soft:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset 0 -0.5px 0 0 rgba(0, 0, 0, 0.25),
+    0 1px 2px rgba(0, 0, 0, 0.35),
+    0 10px 32px -10px rgba(0, 0, 0, 0.55);
+  --shadow-elev:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.3),
+    0 4px 8px rgba(0, 0, 0, 0.35),
+    0 24px 56px -12px rgba(0, 0, 0, 0.65);
+  --shadow-warm:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+    0 4px 24px -4px rgba(229, 106, 74, 0.35);
+}
+
+[data-appearance="liquid"] body {
+  background-image:
+    radial-gradient(ellipse 90% 60% at 12% -10%, rgba(229, 106, 74, 0.16), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 92% 8%, rgba(100, 140, 220, 0.14), transparent 50%),
+    radial-gradient(ellipse 55% 45% at 50% 100%, rgba(180, 140, 220, 0.08), transparent 55%);
+  background-attachment: fixed;
+}
+
+[data-appearance="liquid"].dark body {
+  background-image:
+    radial-gradient(ellipse 90% 60% at 12% -10%, rgba(229, 106, 74, 0.14), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 92% 8%, rgba(70, 110, 200, 0.12), transparent 50%),
+    radial-gradient(ellipse 55% 45% at 50% 100%, rgba(120, 90, 180, 0.1), transparent 55%);
+}
+
+[data-appearance="liquid"] .bg-vibrancy {
+  background: rgba(255, 255, 255, 0.42);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.55),
+    inset 0 -0.5px 0 0 rgba(40, 60, 90, 0.04);
+}
+
+[data-appearance="liquid"].dark .bg-vibrancy {
+  background: rgba(18, 20, 28, 0.55);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset 0 -0.5px 0 0 rgba(0, 0, 0, 0.2);
+}
+
+[data-appearance="liquid"] .card-soft,
+[data-appearance="liquid"] .card-elev {
+  background: var(--color-surface);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  border-color: var(--color-border);
+}
+
+/* Frost cards / modals that use solid surface utility */
+[data-appearance="liquid"] .bg-surface {
+  backdrop-filter: blur(24px) saturate(155%);
+  -webkit-backdrop-filter: blur(24px) saturate(155%);
+}
+
+/* --- Atelier (minimal, paper studio, refined) --- */
+[data-appearance="atelier"] {
+  --color-brand-50: #f7f4f0;
+  --color-brand-100: #ebe3d8;
+  --color-brand-200: #d4c4ae;
+  --color-brand-300: #b89a78;
+  --color-brand-400: #a07a55;
+  --color-brand-500: #8B6914;
+  --color-brand-600: #6f5410;
+  --color-brand-700: #56400c;
+  --color-brand-800: #3d2d08;
+  --color-brand-900: #241a05;
+  --color-primary: #8B6914;
+  --color-primary-hover: #6f5410;
+  --color-bg: #f7f4ef;
+  --color-bg-alt: #efeae2;
+  --color-surface: #fffcf7;
+  --color-surface-2: #f3eee6;
+  --color-surface-3: #e8e1d6;
+  --color-sidebar: rgba(243, 238, 230, 0.92);
+  --color-border: #ddd4c6;
+  --color-border-subtle: #ebe4d8;
+  --color-text: #2c2820;
+  --color-text-main: #2c2820;
+  --color-text-muted: #7a7368;
+  --color-text-subtle: #a39b8e;
+  --radius-brand: 6px;
+  --radius-brand-lg: 8px;
+  --shadow-soft: 0 1px 0 0 rgba(44, 40, 32, 0.04);
+  --shadow-elev:
+    0 1px 0 0 rgba(44, 40, 32, 0.04),
+    0 12px 32px -16px rgba(44, 40, 32, 0.1);
+  --shadow-warm: 0 2px 12px -4px rgba(139, 105, 20, 0.15);
+  --shadow-focus: 0 0 0 2px rgba(139, 105, 20, 0.2);
+  --font-sans: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+}
+
+[data-appearance="atelier"].dark {
+  --color-brand-500: #c4a35a;
+  --color-brand-600: #d4b56e;
+  --color-primary: #c4a35a;
+  --color-primary-hover: #d4b56e;
+  --color-bg: #161412;
+  --color-bg-alt: #1c1a17;
+  --color-surface: #211e1a;
+  --color-surface-2: #2a2621;
+  --color-surface-3: #35302a;
+  --color-sidebar: rgba(28, 26, 23, 0.94);
+  --color-border: #3a342c;
+  --color-border-subtle: #2c2822;
+  --color-text: #e8e2d6;
+  --color-text-main: #e8e2d6;
+  --color-text-muted: #a39b8e;
+  --color-text-subtle: #6e675c;
+  --shadow-soft: 0 1px 0 0 rgba(0, 0, 0, 0.3);
+  --shadow-elev:
+    0 1px 0 0 rgba(255, 255, 255, 0.03),
+    0 16px 40px -12px rgba(0, 0, 0, 0.55);
+  --shadow-warm: 0 2px 16px -4px rgba(196, 163, 90, 0.18);
+  --shadow-focus: 0 0 0 2px rgba(196, 163, 90, 0.22);
+}
+
+[data-appearance="atelier"] body {
+  letter-spacing: 0.01em;
+}
+
+[data-appearance="atelier"] .bg-vibrancy {
+  background: rgba(255, 252, 247, 0.88);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-appearance="atelier"].dark .bg-vibrancy {
+  background: rgba(33, 30, 26, 0.92);
+}
+
+[data-appearance="atelier"] ::selection {
+  background-color: rgba(139, 105, 20, 0.2);
+  color: var(--color-primary);
+}
+
+[data-appearance="atelier"].dark ::selection {
+  background-color: rgba(196, 163, 90, 0.28);
+  color: var(--color-brand-300);
+}
+
+/* --- Forge (bold, modern, editorial punch) --- */
+[data-appearance="forge"] {
+  --color-brand-50: #fff0eb;
+  --color-brand-100: #ffd6c9;
+  --color-brand-200: #ffad94;
+  --color-brand-300: #ff7a52;
+  --color-brand-400: #ff5a2e;
+  --color-brand-500: #FF3D00;
+  --color-brand-600: #e63600;
+  --color-brand-700: #b82b00;
+  --color-brand-800: #8a2000;
+  --color-brand-900: #5c1500;
+  --color-primary: #FF3D00;
+  --color-primary-hover: #e63600;
+  --color-bg: #f4f4f2;
+  --color-bg-alt: #ebebe8;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f0ed;
+  --color-surface-3: #e2e2de;
+  --color-sidebar: #111111;
+  --color-border: #1a1a1a;
+  --color-border-subtle: #d4d4d0;
+  --color-text: #0a0a0a;
+  --color-text-main: #0a0a0a;
+  --color-text-muted: #525252;
+  --color-text-subtle: #8a8a8a;
+  --radius-brand: 2px;
+  --radius-brand-lg: 4px;
+  --shadow-soft: 3px 3px 0 0 rgba(10, 10, 10, 0.08);
+  --shadow-elev: 6px 6px 0 0 rgba(10, 10, 10, 0.12);
+  --shadow-warm: 4px 4px 0 0 rgba(255, 61, 0, 0.35);
+  --shadow-focus: 0 0 0 2px #FF3D00;
+  --font-sans: "Inter", "SF Pro Display", system-ui, sans-serif;
+}
+
+[data-appearance="forge"].dark {
+  --color-brand-500: #FF4D14;
+  --color-brand-600: #ff6a38;
+  --color-primary: #FF4D14;
+  --color-primary-hover: #ff6a38;
+  --color-bg: #0a0a0a;
+  --color-bg-alt: #111111;
+  --color-surface: #161616;
+  --color-surface-2: #1f1f1f;
+  --color-surface-3: #2a2a2a;
+  --color-sidebar: #050505;
+  --color-border: #2e2e2e;
+  --color-border-subtle: #1e1e1e;
+  --color-text: #f5f5f5;
+  --color-text-main: #f5f5f5;
+  --color-text-muted: #a3a3a3;
+  --color-text-subtle: #6b6b6b;
+  --shadow-soft: 3px 3px 0 0 rgba(255, 77, 20, 0.15);
+  --shadow-elev: 6px 6px 0 0 rgba(255, 77, 20, 0.22);
+  --shadow-warm: 4px 4px 0 0 rgba(255, 77, 20, 0.45);
+  --shadow-focus: 0 0 0 2px #FF4D14;
+}
+
+[data-appearance="forge"] body {
+  font-feature-settings: "ss01", "cv11";
+  letter-spacing: -0.015em;
+}
+
+[data-appearance="forge"] .bg-vibrancy {
+  background: #111111;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #f5f5f5;
+}
+
+[data-appearance="forge"]:not(.dark) aside {
+  --color-text-main: #f5f5f5;
+  --color-text-muted: #a3a3a3;
+  --color-text-subtle: #6b6b6b;
+  --color-border: #2e2e2e;
+  --color-border-subtle: #222;
+  --color-surface-2: #1f1f1f;
+  --color-bg: #111;
+}
+
+[data-appearance="forge"] ::selection {
+  background-color: #FF3D00;
+  color: #fff;
+}
+
+[data-appearance="forge"].dark ::selection {
+  background-color: #FF4D14;
+  color: #fff;
+}
+
+[data-appearance="forge"] .scroll-thin-x {
+  scrollbar-color: rgba(255, 61, 0, 0.7) transparent;
+}
+[data-appearance="forge"] .scroll-thin-x::-webkit-scrollbar-thumb {
+  background: rgba(255, 61, 0, 0.7);
+}
+
 /* Changelog markdown body */
 .changelog-body h1 {
   font-size: 1.4rem;

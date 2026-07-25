@@ -34,7 +34,7 @@ export default function RootLayout({ children }) {
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){document.documentElement.classList.add('fonts-loaded')})}else{document.documentElement.classList.add('fonts-loaded')}`,
+            __html: `(function(){try{var r=document.documentElement;var s=localStorage.getItem('theme');if(s){var p=JSON.parse(s);var st=p&&p.state?p.state:p;var t=st&&st.theme;var a=st&&st.appearance;var dark=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);if(dark)r.classList.add('dark');if(a&&a!=='default')r.setAttribute('data-appearance',a)}}catch(e){}if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){document.documentElement.classList.add('fonts-loaded')})}else{document.documentElement.classList.add('fonts-loaded')}})()`,
           }}
         />
       </head>
