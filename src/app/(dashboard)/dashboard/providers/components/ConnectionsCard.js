@@ -1,6 +1,6 @@
 "use client";
 
-import { isQuotaExhaustedText } from "open-sse/config/errorConfig.js";
+import { isQuotaExhaustedText, isTokenInvalidText } from "open-sse/config/errorConfig.js";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
 import PropTypes from "prop-types";
@@ -89,6 +89,7 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
   const effectiveStatus = connection.testStatus === "unavailable" && !isCooldown ? "active" : connection.testStatus;
   const lastErrorText = connection.lastError || "";
   const isAutoDisabled = connection.isActive === false && (connection.autoDisabled === true || connection.disabledReason === "quota_exhausted" || isQuotaExhaustedText(lastErrorText));
+  const isTokenInvalid = isTokenInvalidText(lastErrorText, connection.errorCode);
 
   const getStatusVariant = () => getConnectionStatusVariant(connection.isActive, effectiveStatus);
 
@@ -125,6 +126,11 @@ function ConnectionRow({ connection, proxyPools, isOAuth, isFirst, isLast, onMov
             {isAutoDisabled && (
               <Badge variant="error" size="sm" title={lastErrorText || connection.disabledReason || "quota exhausted"}>
                 quota exhausted
+              </Badge>
+            )}
+            {isTokenInvalid && !isAutoDisabled && (
+              <Badge variant="error" size="sm" title={lastErrorText || "token invalid or revoked"}>
+                token invalid
               </Badge>
             )}
             {hasAnyProxy && <Badge variant={proxyBadgeVariant} size="sm">Proxy</Badge>}
@@ -378,6 +384,27 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
     });
   };
 
+  const handleDeleteInvalidTokens = () => {
+    const targets = connections.filter((c) => isTokenInvalidText(c?.lastError, c?.errorCode));
+    const count = targets.length;
+    if (count === 0) return;
+    setConfirmState({
+      title: `Delete ${count} Invalid Token${count > 1 ? "s" : ""}`,
+      message: `Delete ${count} connection${count > 1 ? "s" : ""} with invalid / revoked tokens? This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        const idsToDelete = targets.map((c) => c.id);
+        for (const id of idsToDelete) {
+          try {
+            const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
+            if (!res.ok) continue;
+          } catch (e) { console.log("delete invalid-token error:", e); }
+        }
+        setConnections((prev) => prev.filter((c) => !idsToDelete.includes(c.id)));
+      },
+    });
+  };
+
   const handleToggleActive = async (id, isActive) => {
     try {
       const res = await fetch(`/api/providers/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive }) });
@@ -414,6 +441,17 @@ export default function ConnectionsCard({ providerId, isOAuth }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h2 className="text-lg font-semibold">Connections</h2>
           <div className="flex flex-wrap items-center gap-2">
+            {connections.some((c) => isTokenInvalidText(c?.lastError, c?.errorCode)) && (
+              <Button
+                size="sm"
+                variant="danger"
+                icon="key_off"
+                onClick={handleDeleteInvalidTokens}
+                title="Permanently delete connections whose last error is token invalid / revoked / expired"
+              >
+                Delete invalid tokens ({connections.filter((c) => isTokenInvalidText(c?.lastError, c?.errorCode)).length})
+              </Button>
+            )}
             <span className="text-xs text-text-muted font-medium">Round Robin</span>
             <Toggle
               checked={providerStrategy === "round-robin"}

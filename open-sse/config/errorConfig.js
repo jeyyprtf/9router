@@ -103,6 +103,50 @@ export function isQuotaExhaustedText(errorText) {
   return QUOTA_EXHAUSTED_MARKERS.some((m) => lower.includes(m));
 }
 
+/**
+ * Hard auth / credential death markers — token invalid, revoked, expired key.
+ * Used by the dashboard bulk "Delete invalid tokens" action (and badges).
+ * Soft 401s without these words are NOT matched (e.g. temporary upstream glitches
+ * that still say "unauthorized" only).
+ *
+ * SINGLE SOURCE OF TRUTH — same rule as QUOTA_EXHAUSTED_MARKERS: do not re-inline.
+ */
+export const TOKEN_INVALID_MARKERS = [
+  "token invalid",
+  "token has been invalidated",
+  "authentication token has been invalidated",
+  "invalid token",
+  "token invalidated",
+  "token_invalid",
+  "revoked",
+  "invalid_grant",
+  "refresh_token_invalidated",
+  "key expired",
+  "invalid api key",
+  "invalid_api_key",
+];
+
+/**
+ * True when lastError / probe message indicates a dead credential
+ * (invalid / revoked / expired token). Safe to permanently delete the connection.
+ * @param {unknown} errorText
+ * @param {unknown} [errorCode] optional HTTP / stored errorCode (401 strengthens match)
+ * @returns {boolean}
+ */
+export function isTokenInvalidText(errorText, errorCode) {
+  const lower = normalizeErrorText(errorText);
+  if (lower && TOKEN_INVALID_MARKERS.some((m) => lower.includes(m))) return true;
+  // Bare 401 with empty body still means auth is dead for our providers
+  const code = Number(errorCode);
+  if (Number.isFinite(code) && code === 401 && !lower) return true;
+  // "[401]: ..." without one of the markers above — still auth failure
+  if (Number.isFinite(code) && code === 401) return true;
+  if (/\[?\s*401\b/.test(lower) || lower.includes('"status":401') || lower.includes("status\": 401")) {
+    return true;
+  }
+  return false;
+}
+
 export const ERROR_RULES = [
   // --- Text-based rules (checked first, order = priority) ---
   { text: "no credentials",           cooldownMs: COOLDOWN.long },
