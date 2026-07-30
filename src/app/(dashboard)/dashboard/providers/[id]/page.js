@@ -1,6 +1,6 @@
 "use client";
 
-import { isQuotaExhaustedText } from "open-sse/config/errorConfig.js";
+import { isQuotaExhaustedText, isTokenInvalidText } from "open-sse/config/errorConfig.js";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -38,6 +38,11 @@ function sleep(ms) {
 
 function isQuotaExhaustedConn(c) {
   return isQuotaExhaustedText(c?.lastError);
+}
+
+function isTokenInvalidConn(c) {
+  if (!c) return false;
+  return isTokenInvalidText(c.lastError, c.errorCode);
 }
 
 /**
@@ -978,6 +983,33 @@ export default function ProviderDetailPage() {
     }
   };
 
+  const handleDeleteInvalidTokens = () => {
+    const targets = connections.filter(isTokenInvalidConn);
+    const count = targets.length;
+    if (count === 0) return;
+    setConfirmState({
+      title: `Delete ${count} Invalid Token${count > 1 ? "s" : ""}`,
+      message: `Delete ${count} connection${count > 1 ? "s" : ""} with invalid / revoked tokens? This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        let failed = 0;
+        const idsToDelete = targets.map((c) => c.id);
+        for (const id of idsToDelete) {
+          try {
+            const res = await fetch(`/api/providers/${id}`, { method: "DELETE" });
+            if (!res.ok) failed += 1;
+          } catch (error) {
+            console.log("Error deleting invalid-token connection:", error);
+            failed += 1;
+          }
+        }
+        setConnections((prev) => prev.filter((c) => !idsToDelete.includes(c.id)));
+        setSelectedConnectionIds((prev) => prev.filter((id) => !idsToDelete.includes(id)));
+        if (failed > 0) alert(`Deleted ${idsToDelete.length - failed} connection(s), ${failed} failed.`);
+      },
+    });
+  };
+
   const handleSwapPriority = async (index1, index2) => {
     // Optimistic update state
     const newConnections = [...connections];
@@ -1613,6 +1645,17 @@ export default function ProviderDetailPage() {
                       title="Re-enable connections that were auto-disabled after quota exhaustion"
                     >
                       Enable auto-disabled ({connections.filter(isQuotaAutoDisabledConn).length})
+                    </Button>
+                  )}
+                  {connections.some(isTokenInvalidConn) && (
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      icon="key_off"
+                      onClick={handleDeleteInvalidTokens}
+                      title="Permanently delete connections whose last error is token invalid / revoked / expired"
+                    >
+                      Delete invalid tokens ({connections.filter(isTokenInvalidConn).length})
                     </Button>
                   )}
                   {selectedConnectionIds.length > 0 && (
