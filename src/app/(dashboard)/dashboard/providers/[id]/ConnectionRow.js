@@ -1,6 +1,6 @@
 "use client";
 
-import { isQuotaExhaustedText } from "open-sse/config/errorConfig.js";
+import { isQuotaExhaustedText, isTokenInvalidText } from "open-sse/config/errorConfig.js";
 import { useState, useEffect, useRef } from "react";
 import { getStatusVariant as getConnectionStatusVariant } from "@/shared/utils/connectionStatus";
 import PropTypes from "prop-types";
@@ -119,6 +119,7 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
 
   const lastErrorText = connection.lastError || "";
   const isAutoDisabled = connection.isActive === false && (connection.autoDisabled === true || connection.disabledReason === "quota_exhausted" || isQuotaExhaustedText(lastErrorText));
+  const isTokenInvalid = isTokenInvalidText(lastErrorText, connection.errorCode);
 
   const getStatusVariant = () => getConnectionStatusVariant(connection.isActive, effectiveStatus);
 
@@ -176,6 +177,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             {isAutoDisabled && (
               <Badge variant="error" size="sm" title={lastErrorText || connection.disabledReason || "quota exhausted"}>
                 quota exhausted
+              </Badge>
+            )}
+            {isTokenInvalid && !isAutoDisabled && (
+              <Badge variant="error" size="sm" title={lastErrorText || "token invalid or revoked"}>
+                token invalid
               </Badge>
             )}
             <Badge variant="default" size="sm">
