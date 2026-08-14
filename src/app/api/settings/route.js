@@ -108,6 +108,16 @@ export async function PATCH(request) {
         .catch((error) => console.warn("[AutoPing] settings update failed:", error.message));
     }
 
+    if (
+      Object.prototype.hasOwnProperty.call(body, "autoEnableOnQuotaExhausted") ||
+      Object.prototype.hasOwnProperty.call(body, "autoEnableAfterMinutes") ||
+      Object.prototype.hasOwnProperty.call(body, "providerStrategies")
+    ) {
+      import("@/shared/services/quotaAutoEnable")
+        .then(({ configureQuotaAutoEnable }) => configureQuotaAutoEnable(settings))
+        .catch((error) => console.warn("[AutoEnable] settings update failed:", error.message));
+    }
+
     const { password, oidcClientSecret, ...safeSettings } = settings;
     safeSettings.oidcConfigured = !!(safeSettings.oidcIssuerUrl && safeSettings.oidcClientId && oidcClientSecret);
     return NextResponse.json(safeSettings, { headers: SETTINGS_RESPONSE_HEADERS });

@@ -25,7 +25,7 @@ export default function Card({
   return (
     <div
       className={cn(
-        "bg-surface border border-border-subtle",
+        "app-card bg-surface border border-border-subtle",
         elev
           ? "rounded-[var(--radius-brand-lg)] shadow-[var(--shadow-elev)]"
           : "rounded-[var(--radius-brand-lg)] shadow-[var(--shadow-soft)]",

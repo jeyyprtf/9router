@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { THEME_CONFIG } from "@/shared/constants/config";
 
-const APPEARANCES = new Set(["default", "liquid", "atelier", "forge"]);
+const APPEARANCES = new Set(["default", "liquid", "atelier", "forge", "macbook"]);
 
 const useThemeStore = create(
   persist(
