@@ -44,6 +44,7 @@ describe.skipIf(!fs.existsSync(sandboxDb))("markAccountUnavailable auto-disable 
       autoDisabled: false,
       disabledReason: null,
       disabledAt: null,
+      autoEnableAt: null,
       lastError: null,
       testStatus: "active",
     });
@@ -57,6 +58,7 @@ describe.skipIf(!fs.existsSync(sandboxDb))("markAccountUnavailable auto-disable 
       autoDisabled: original.autoDisabled ?? false,
       disabledReason: original.disabledReason ?? null,
       disabledAt: original.disabledAt ?? null,
+      autoEnableAt: original.autoEnableAt ?? null,
       lastError: original.lastError ?? null,
       testStatus: original.testStatus ?? null,
       backoffLevel: original.backoffLevel ?? 0,

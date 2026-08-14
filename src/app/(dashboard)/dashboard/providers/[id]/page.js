@@ -10,6 +10,7 @@ import { Card, Button, Badge, Input, Modal, CardSkeleton, OAuthModal, KiroOAuthW
 import { OAUTH_PROVIDERS, APIKEY_PROVIDERS, FREE_PROVIDERS, FREE_TIER_PROVIDERS, WEB_COOKIE_PROVIDERS, getProviderAlias, isOpenAICompatibleProvider, isAnthropicCompatibleProvider, AI_PROVIDERS } from "@/shared/constants/providers";
 import { getModelsByProviderId, getModelKind } from "@/shared/constants/models";
 import { getThinkingLevels } from "open-sse/providers/thinkingLevels.js";
+import { getAutoEnableConfig, normalizeAutoEnableDelayMinutes } from "@/shared/constants/autoEnable.js";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { translate } from "@/i18n/runtime";
@@ -87,6 +88,10 @@ export default function ProviderDetailPage() {
   const [providerStrategy, setProviderStrategy] = useState(null);
   // null = inherit global default (ON); true/false = explicit per-provider override
   const [autoDisableQuota, setAutoDisableQuota] = useState(true);
+  const [autoEnableQuota, setAutoEnableQuota] = useState(false);
+  const [autoEnableAfterMinutes, setAutoEnableAfterMinutes] = useState(24 * 60);
+  const [autoEnableDurationValue, setAutoEnableDurationValue] = useState("24");
+  const [autoEnableDurationUnit, setAutoEnableDurationUnit] = useState("hours");
   const [providerStickyLimit, setProviderStickyLimit] = useState("");
   const [thinkingMode, setThinkingMode] = useState("auto");
   const [autoPing, setAutoPing] = useState({ enabled: false, connections: {} });
@@ -336,6 +341,17 @@ export default function ProviderDetailPage() {
       else if (override.autoDisableOnQuotaExhausted === true) autoDisableOn = true;
       setAutoDisableQuota(autoDisableOn);
 
+      const autoEnableConfig = getAutoEnableConfig(settingsData, providerId);
+      setAutoEnableQuota(autoEnableConfig.enabled);
+      setAutoEnableAfterMinutes(autoEnableConfig.delayMinutes);
+      if (autoEnableConfig.delayMinutes % 60 === 0) {
+        setAutoEnableDurationUnit("hours");
+        setAutoEnableDurationValue(String(autoEnableConfig.delayMinutes / 60));
+      } else {
+        setAutoEnableDurationUnit("minutes");
+        setAutoEnableDurationValue(String(autoEnableConfig.delayMinutes));
+      }
+
       if (connectionsRes.ok) {
         let filtered = (connectionsData.connections || []).filter(c => c.provider === providerId);
         // Keep UI toggle in sync with Auto-disable: force-disable still-active exhausted accounts
@@ -427,7 +443,7 @@ export default function ProviderDetailPage() {
     }
   };
 
-  const saveProviderStrategy = async ({ strategy, stickyLimit, autoDisable } = {}) => {
+  const saveProviderStrategy = async ({ strategy, stickyLimit, autoDisable, autoEnable, autoEnableAfterMinutes: autoEnableDelay } = {}) => {
     try {
       const settingsRes = await fetch("/api/settings", { cache: "no-store" });
       const settingsData = settingsRes.ok ? await settingsRes.json() : {};
@@ -439,6 +455,11 @@ export default function ProviderDetailPage() {
       const nextSticky = stickyLimit !== undefined ? stickyLimit : existing.stickyRoundRobinLimit;
       const nextAuto =
         autoDisable !== undefined ? autoDisable : existing.autoDisableOnQuotaExhausted;
+      const nextAutoEnable =
+        autoEnable !== undefined ? autoEnable : existing.autoEnableOnQuotaExhausted;
+      const nextAutoEnableDelay = autoEnableDelay !== undefined
+        ? normalizeAutoEnableDelayMinutes(autoEnableDelay)
+        : existing.autoEnableAfterMinutes;
 
       if (nextStrategy) existing.fallbackStrategy = nextStrategy;
       else delete existing.fallbackStrategy;
@@ -451,6 +472,13 @@ export default function ProviderDetailPage() {
 
       if (nextAuto === true || nextAuto === false) {
         existing.autoDisableOnQuotaExhausted = nextAuto;
+      }
+
+      if (nextAutoEnable === true || nextAutoEnable === false) {
+        existing.autoEnableOnQuotaExhausted = nextAutoEnable;
+      }
+      if (nextAutoEnableDelay !== undefined && nextAutoEnableDelay !== null) {
+        existing.autoEnableAfterMinutes = normalizeAutoEnableDelayMinutes(nextAutoEnableDelay);
       }
 
       const updated = { ...current };
@@ -500,6 +528,45 @@ export default function ProviderDetailPage() {
       const next = await syncDisableQuotaExhausted(connections);
       setConnections(next);
     }
+  };
+
+  const handleAutoEnableToggle = async (enabled) => {
+    setAutoEnableQuota(enabled);
+    await saveProviderStrategy({ autoEnable: enabled });
+    await fetchConnections();
+  };
+
+  const handleAutoEnableDurationChange = (value) => {
+    setAutoEnableDurationValue(value);
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return;
+    const minutes = normalizeAutoEnableDelayMinutes(
+      autoEnableDurationUnit === "hours" ? numeric * 60 : numeric,
+    );
+    setAutoEnableAfterMinutes(minutes);
+  };
+
+  const handleAutoEnableDurationUnitChange = (unit) => {
+    const numeric = Number(autoEnableDurationValue);
+    const currentMinutes = Number.isFinite(numeric) && numeric > 0
+      ? normalizeAutoEnableDelayMinutes(autoEnableDurationUnit === "hours" ? numeric * 60 : numeric)
+      : autoEnableAfterMinutes;
+    const nextValue = unit === "hours" ? currentMinutes / 60 : currentMinutes;
+    setAutoEnableDurationUnit(unit);
+    setAutoEnableDurationValue(String(nextValue));
+    setAutoEnableAfterMinutes(currentMinutes);
+    saveProviderStrategy({ autoEnableAfterMinutes: currentMinutes });
+  };
+
+  const handleAutoEnableDurationBlur = () => {
+    const minutes = normalizeAutoEnableDelayMinutes(autoEnableAfterMinutes);
+    setAutoEnableAfterMinutes(minutes);
+    if (autoEnableDurationUnit === "hours") {
+      setAutoEnableDurationValue(String(minutes / 60));
+    } else {
+      setAutoEnableDurationValue(String(minutes));
+    }
+    saveProviderStrategy({ autoEnableAfterMinutes: minutes });
   };
 
   const saveThinkingConfig = async (mode) => {
@@ -925,7 +992,7 @@ export default function ProviderDetailPage() {
               ...c,
               isActive,
               ...(isActive
-                ? { autoDisabled: false, disabledReason: null, disabledAt: null }
+                ? { autoDisabled: false, disabledReason: null, disabledAt: null, autoEnableAt: null }
                 : extra),
             };
           }),
@@ -1619,7 +1686,7 @@ export default function ProviderDetailPage() {
               <h2 className="text-lg font-semibold">Connections</h2>
               {autoDisableQuota && (
                 <p className="mt-1 text-xs text-text-muted">
-                  Auto-disable ON: hard quota / free-usage 429 skips the account (kept in list) until you re-enable it.
+                  Auto-disable ON: hard quota / free-usage 429 skips the account (kept in list) until manual or scheduled re-enable.
                 </p>
               )}
             </div>
@@ -1697,6 +1764,40 @@ export default function ProviderDetailPage() {
                   checked={autoDisableQuota}
                   onChange={handleAutoDisableToggle}
                 />
+              </div>
+              <div
+                className="flex flex-wrap items-center gap-2"
+                title="When ON, quota-disabled connections are automatically enabled after the configured delay."
+              >
+                <span className="text-xs text-text-muted font-medium">Auto-enable</span>
+                <Toggle
+                  checked={autoEnableQuota}
+                  onChange={handleAutoEnableToggle}
+                />
+                {autoEnableQuota && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-text-muted">after</span>
+                    <input
+                      type="number"
+                      min={autoEnableDurationUnit === "hours" ? 0.5 : 1}
+                      step={autoEnableDurationUnit === "hours" ? 0.5 : 1}
+                      value={autoEnableDurationValue}
+                      onChange={(e) => handleAutoEnableDurationChange(e.target.value)}
+                      onBlur={handleAutoEnableDurationBlur}
+                      aria-label="Auto-enable delay"
+                      className="w-16 rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+                    />
+                    <select
+                      value={autoEnableDurationUnit}
+                      onChange={(e) => handleAutoEnableDurationUnitChange(e.target.value)}
+                      aria-label="Auto-enable delay unit"
+                      className="rounded-md border border-border bg-background px-2 py-1 text-xs focus:border-primary focus:outline-none"
+                    >
+                      <option value="minutes">minutes</option>
+                      <option value="hours">hours</option>
+                    </select>
+                  </div>
+                )}
               </div>
               {/* Round Robin toggle */}
               <div className="flex flex-wrap items-center gap-2">
