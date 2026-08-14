@@ -119,6 +119,9 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
 
   const lastErrorText = connection.lastError || "";
   const isAutoDisabled = connection.isActive === false && (connection.autoDisabled === true || connection.disabledReason === "quota_exhausted" || isQuotaExhaustedText(lastErrorText));
+  const autoEnableSchedule = isAutoDisabled && connection.autoEnableAt
+    ? new Date(connection.autoEnableAt).toLocaleString()
+    : null;
   const isTokenInvalid = isTokenInvalidText(lastErrorText, connection.errorCode);
 
   const getStatusVariant = () => getConnectionStatusVariant(connection.isActive, effectiveStatus);
@@ -177,6 +180,11 @@ export default function ConnectionRow({ connection, proxyPools, isOAuth, isFirst
             {isAutoDisabled && (
               <Badge variant="error" size="sm" title={lastErrorText || connection.disabledReason || "quota exhausted"}>
                 quota exhausted
+              </Badge>
+            )}
+            {autoEnableSchedule && (
+              <Badge variant="default" size="sm" title={`Scheduled for ${autoEnableSchedule}`}>
+                auto-enable scheduled
               </Badge>
             )}
             {isTokenInvalid && !isAutoDisabled && (

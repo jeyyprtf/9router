@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { buildClearModelLocksUpdate } from "open-sse/services/accountFallback.js";
 import { isQuotaExhaustedText } from "open-sse/config/errorConfig.js";
+import { getSettings } from "@/lib/localDb";
+import { getAutoEnableConfig } from "@/shared/constants/autoEnable.js";
 import {
   getProviderConnectionById,
   getProxyPoolById,
@@ -145,6 +147,7 @@ export async function PUT(request, { params }) {
           if (lastError === undefined) updateData.lastError = null;
           updateData.errorCode = null;
           updateData.backoffLevel = 0;
+          updateData.autoEnableAt = null;
           // Drop the cooldown set alongside the auto-disable, so Enable is usable now
           Object.assign(updateData, buildClearModelLocksUpdate(existing));
         }
@@ -159,6 +162,12 @@ export async function PUT(request, { params }) {
       updateData.autoDisabled = true;
       updateData.disabledReason = disabledReason || "quota_exhausted";
       updateData.disabledAt = disabledAt || new Date().toISOString();
+      const settings = await getSettings();
+      const autoEnableConfig = getAutoEnableConfig(settings, existing.provider);
+      const disabledAtMs = new Date(updateData.disabledAt).getTime();
+      updateData.autoEnableAt = autoEnableConfig.enabled && Number.isFinite(disabledAtMs)
+        ? new Date(disabledAtMs + autoEnableConfig.delayMinutes * 60 * 1000).toISOString()
+        : null;
       if (testStatus === undefined) updateData.testStatus = "unavailable";
     }
     if (apiKey && existing.authType === "apikey") updateData.apiKey = apiKey;
