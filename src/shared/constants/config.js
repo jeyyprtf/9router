@@ -37,7 +37,7 @@ export const THEME_CONFIG = {
   storageKey: "theme",
   defaultTheme: "system", // "light" | "dark" | "system"
   appearanceStorageKey: "appearance",
-  defaultAppearance: "default", // "default" | "liquid" | "atelier" | "forge"
+  defaultAppearance: "default", // "default" | "liquid" | "atelier" | "forge" | "macbook"
 };
 
 // Visual appearance presets (independent of light/dark)
@@ -65,6 +65,12 @@ export const APPEARANCE_PRESETS = [
     label: "Forge",
     description: "Bold editorial contrast — sharp, dense, punchy",
     icon: "bolt",
+  },
+  {
+    id: "macbook",
+    label: "MacBook Pro",
+    description: "Apple-inspired calm — graphite, glass, and fluid motion",
+    icon: "laptop_mac",
   },
 ];
 

@@ -4,6 +4,7 @@ import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLock
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache } from "./antigravityQuota.js";
+import { getAutoEnableConfig } from "@/shared/constants/autoEnable.js";
 import * as log from "../utils/logger.js";
 
 // Mutex to prevent race conditions during account selection
@@ -276,15 +277,17 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
 
   // User control: global setting + per-provider override (like round-robin)
   let autoDisableEnabled = true;
+  let autoEnableConfig = getAutoEnableConfig(null, null);
   try {
     const settings = await getSettings();
     autoDisableEnabled = settings.autoDisableOnQuotaExhausted !== false;
-    if (provider) {
-      const providerId = resolveProviderId(provider);
+    const providerId = provider ? resolveProviderId(provider) : null;
+    if (providerId) {
       const override = (settings.providerStrategies || {})[providerId] || {};
       if (override.autoDisableOnQuotaExhausted === false) autoDisableEnabled = false;
       else if (override.autoDisableOnQuotaExhausted === true) autoDisableEnabled = true;
     }
+    autoEnableConfig = getAutoEnableConfig(settings, providerId);
   } catch {
     autoDisableEnabled = true;
   }
@@ -305,6 +308,9 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
     update.autoDisabled = true;
     update.disabledReason = "quota_exhausted";
     update.disabledAt = nowIso;
+    update.autoEnableAt = autoEnableConfig.enabled
+      ? new Date(Date.parse(nowIso) + autoEnableConfig.delayMinutes * 60 * 1000).toISOString()
+      : null;
   }
 
   await updateProviderConnection(connectionId, update);

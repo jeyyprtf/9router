@@ -15,6 +15,10 @@ const DEFAULT_SETTINGS = {
   // When true, hard quota / free-usage 429 sets connection isActive=false (kept in list).
   // Per-provider override: providerStrategies[providerId].autoDisableOnQuotaExhausted
   autoDisableOnQuotaExhausted: true,
+  // When true, quota-disabled connections are re-enabled after the configured delay.
+  // Per-provider overrides: autoEnableOnQuotaExhausted / autoEnableAfterMinutes
+  autoEnableOnQuotaExhausted: false,
+  autoEnableAfterMinutes: 24 * 60,
   providerStrategies: {},
   quotaVisibility: {},
   comboStrategy: "fallback",
